@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LiveCut Studio - HLS Video Clipper</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1419; color: #f7f9f9; padding: 20px; margin: 0; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .video-wrapper { position: relative; background: #000; border-radius: 12px; overflow: hidden; }
+    video { width: 100%; display: block; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; background: #15202b; padding: 15px; border-radius: 8px; }
+    button { background: #1d9bf0; color: white; border: none; padding: 8px 16px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+    button:hover { background: #1a8cd8; }
+    button.live-btn { background: #f4212e; }
+    .input-group { display: flex; width: 100%; gap: 10px; margin-bottom: 15px; }
+    input[type="text"] { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #333; background: #192734; color: #fff; }
+    .timestamps { display: flex; gap: 20px; width: 100%; margin-top: 10px; font-size: 0.9em; color: #8899a6; }
+    .timestamps span { color: #fff; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>LiveCut Studio</h2>
+    
+    <div class="input-group">
+      <input type="text" id="streamUrl" placeholder="Enter HLS Stream URL (.m3u8)" value="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">
+      <button onclick="loadStream()">Load Stream</button>
+    </div>
+
+    <div class="video-wrapper">
+      <video id="video" controls></video>
+    </div>
+
+    <div class="controls">
+      <button onclick="seekRelative(-10)">-10s</button>
+      <button onclick="seekRelative(10)">+10s</button>
+      <button class="live-btn" onclick="goToLive()">🔴 GO TO LIVE</button>
+      <button onclick="setInPoint()">Mark IN</button>
+      <button onclick="setOutPoint()">Mark OUT</button>
+      <button onclick="previewClip()">Preview Clip</button>
+      <button onclick="exportClip()">Export Clip</button>
+    </div>
+
+    <div class="timestamps">
+      <div>In Point: <span id="inLabel">Not Set</span></div>
+      <div>Out Point: <span id="outLabel">Not Set</span></div>
+      <div>Duration: <span id="durLabel">0s</span></div>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    let hls;
+    let markIn = null;
+    let markOut = null;
+
+    function loadStream() {
+      const url = document.getElementById('streamUrl').value;
+      if (Hls.isSupported()) {
+        if (hls) hls.destroy();
+        hls = new Hls({ liveSyncDurationCount: 3 });
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
+        video.addEventListener('loadedmetadata', () => video.play());
+      }
+    }
+
+    function seekRelative(seconds) {
+      video.currentTime += seconds;
+    }
+
+    function goToLive() {
+      if (hls) {
+        video.currentTime = video.duration - 1;
+      } else {
+        video.currentTime = video.duration;
+      }
+    }
+
+    function setInPoint() {
+      markIn = video.currentTime;
+      document.getElementById('inLabel').innerText = markIn.toFixed(2) + 's';
+      updateDuration();
+    }
+
+    function setOutPoint() {
+      markOut = video.currentTime;
+      document.getElementById('outLabel').innerText = markOut.toFixed(2) + 's';
+      updateDuration();
+    }
+
+    function updateDuration() {
+      if (markIn !== null && markOut !== null && markOut > markIn) {
+        document.getElementById('durLabel').innerText = (markOut - markIn).toFixed(2) + 's';
+      }
+    }
+
+    function previewClip() {
+      if (markIn === null || markOut === null) return alert('Set both IN and OUT points first.');
+      video.currentTime = markIn;
+      video.play();
+      
+      const checkTime = () => {
+        if (video.currentTime >= markOut) {
+          video.pause();
+          video.removeEventListener('timeupdate', checkTime);
+        }
+      };
+      video.addEventListener('timeupdate', checkTime);
+    }
+
+    function exportClip() {
+      if (markIn === null || markOut === null) return alert('Set both IN and OUT points first.');
+      
+      const payload = {
+        streamUrl: document.getElementById('streamUrl').value,
+        startTime: markIn,
+        endTime: markOut,
+        duration: markOut - markIn
+      };
+
+      console.log('Sending payload to FFmpeg render server:', payload);
+      alert(`Clip export triggered for duration ${payload.duration.toFixed(2)}s. Check console for payload details.`);
+    }
+
+    loadStream();
+  </script>
+</body>
+</html>
